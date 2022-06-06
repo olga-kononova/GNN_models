@@ -20,12 +20,14 @@ class GNNWrapper(torch.nn.Module):
         model_path  :path to trained model file
         device      :cpu or gpu
     """
-    def __init__(self, model, model_path, name="", suffix="", device="cuda"):
+    def __init__(self, model, model_path, name="", suffix="", device="cuda", noActDrop=False):
         super(GNNWrapper, self).__init__()
         self.model = model.to(device) if device == "cuda" else model
         self.model_path = model_path
         self.name = name
         self.suffix = suffix
+        
+        self.reduced = noActDrop
 
         self.device = device
         self.loss_fn = CrossEntropyLoss()
@@ -51,7 +53,7 @@ class GNNWrapper(torch.nn.Module):
     def split_layers(self):
         if self.model:
             for layer in self.model.children():
-                if "TransformerConv" in str(layer):
+                if any(c in str(layer) for c in {"TransformerConv", "CGConv"}):
                     self.conv_layers.append(layer)
                 if "Linear" in str(layer):
                     self.classifier = layer
@@ -124,27 +126,60 @@ class GNNEdgeWrapper(GNNWrapper):
         model_path  :path to trained model file
         device      :cpu or gpu
     """
-    def __init__(self, model, model_path, name="", suffix="", device="cuda"):
-        super(GNNEdgeWrapper, self).__init__(model, model_path, name, suffix, device)
+    def __init__(self, model, model_path, name="", suffix="", device="cuda", noActDrop=False):
+        super(GNNEdgeWrapper, self).__init__(model, model_path, name, suffix, device, noActDrop)
 
     def get_embeddings(self, torch_data):
         torch_data = torch_data.to(self.device) if self.device == "cuda" else torch_data
-        convolution = F.dropout(self.activation(self.conv_layers[0](torch_data.x,
-                                                                    torch_data.edge_index,
-                                                                    torch_data.edge_attr)),
-                                p=0.3,
-                                training=False)
-        for layer in self.conv_layers[1:-1]:
-            convolution = F.dropout(self.activation(layer(convolution,
-                                                          torch_data.edge_index,
-                                                          torch_data.edge_attr)),
+        if not self.reduced:
+            convolution = F.dropout(self.activation(self.conv_layers[0](torch_data.x,
+                                                                        torch_data.edge_index,
+                                                                        torch_data.edge_attr)),
                                     p=0.3,
-                                    training=False)
-
+                                    training=False) 
+        else:
+            convolution = self.conv_layers[0](torch_data.x,
+                                              torch_data.edge_index,
+                                              torch_data.edge_attr) 
+        for layer in self.conv_layers[1:-1]:
+            if not self.reduced:
+                convolution = F.dropout(self.activation(layer(convolution,
+                                                            torch_data.edge_index,
+                                                            torch_data.edge_attr)),
+                                        p=0.3,
+                                        training=False)
+            else:
+                convolution = layer(convolution,
+                                    torch_data.edge_index,
+                                    torch_data.edge_attr)
+                
         convolution = self.conv_layers[-1](convolution,
                                            torch_data.edge_index,
                                            torch_data.edge_attr)
+        if self.reduced:
+            convolution = F.dropout(self.activation(convolution),
+                                    p=0.3,
+                                    training=False)
+            
         return self.normalization(convolution)
+    # def get_embeddings(self, torch_data):
+    #     torch_data = torch_data.to(self.device) if self.device == "cuda" else torch_data
+    #     convolution = self.conv_layers[0](torch_data.x,
+    #                                         torch_data.edge_index,
+    #                                         torch_data.edge_attr)
+    #     for layer in self.conv_layers[1:-1]:
+    #         convolution = layer(convolution,
+    #                             torch_data.edge_index,
+    #                             torch_data.edge_attr)
+
+    #     convolution = self.conv_layers[-1](convolution,
+    #                                        torch_data.edge_index,
+    #                                        torch_data.edge_attr)
+    #     convolution = F.dropout(self.activation(convolution),
+    #                             p=0.3,
+    #                             training=False)
+        
+    #     return self.normalization(convolution)
 
 
 class GNNTrainer(GNNWrapper):

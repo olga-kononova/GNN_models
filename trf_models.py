@@ -44,6 +44,45 @@ class TrfEdgeNet(torch.nn.Module):
 
         return self.classifier(x)
     
+
+class TrfEdgeNetNoActDrop(torch.nn.Module):
+    ## Default parameters correspond to the best architecture according to optimization
+    def __init__(self, num_node_features, num_edge_features, num_classes,
+                 interlayer_dim=128, output_dim=256, activation="relu", drop_p=0.3, heads=8, batch_norm=True,
+                 concat=False, aggr="add"):
+        super(TrfEdgeNetNoActDrop, self).__init__()
+        self.trf1 = TransformerConv(in_channels=num_node_features, out_channels=interlayer_dim,
+                                    edge_dim=num_edge_features, heads=heads, concat=concat, aggr=aggr)
+        self.trf2 = TransformerConv(in_channels=interlayer_dim, out_channels=interlayer_dim, edge_dim=num_edge_features,
+                                    heads=heads, concat=concat, aggr=aggr)
+        self.trf3 = TransformerConv(in_channels=interlayer_dim, out_channels=output_dim, edge_dim=num_edge_features,
+                                    heads=heads, concat=concat, aggr=aggr)
+        self.classifier = Linear(output_dim, num_classes)
+        self.__activation = {"relu": ReLU(),
+                             "elu": ELU(),
+                             "tanh": Tanh(),
+                             "softmax": Softmax(dim=1)}[activation]
+        self.__drop_p = drop_p
+        self.do_norm = batch_norm
+        self.normalization = BatchNorm1d(output_dim)
+
+    def forward(self, data):
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+
+        x = self.trf1(x, edge_index, edge_attr)
+        #x = self.__activation(x)
+        #x = F.dropout(x, p=self.__drop_p, training=self.training)
+        x = self.trf2(x, edge_index, edge_attr)
+        #x = self.__activation(x)
+        #x = F.dropout(x, p=self.__drop_p, training=self.training)
+        x = self.trf3(x, edge_index, edge_attr)
+        x = self.__activation(x)
+        x = F.dropout(x, p=self.__drop_p, training=self.training)
+        if self.do_norm:
+            x = self.normalization(x)
+
+        return self.classifier(x)
+    
     
 class TrfEdgeElemNet(torch.nn.Module):
     def __init__(self, num_node_features, num_edge_features, num_classes,
