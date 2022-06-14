@@ -88,17 +88,19 @@ class GNNWrapper(torch.nn.Module):
     def test(self, dataloader):
         size = len(dataloader)
         self.model.eval()
-        test_loss, correct_per_mol = 0, 0
+        test_loss, correct_per_mol, correct, total_atoms = 0, 0, 0, 0
         for data in dataloader:
             dev_data = data.to(self.device) if self.device == "cuda" else data
             y = dev_data.y
             pred = self.model(dev_data)
             test_loss += self.loss_fn(pred, y).item()
-            correct = (pred.argmax(1) == y).sum().item()
+            correct += (pred.argmax(1) == y).sum().item()
             correct_per_mol += int(pred.argmax(1).eq(y).all())
+            total_atoms += y.size(0)
         test_loss /= size
         correct_per_mol /= size
-        return correct_per_mol, test_loss
+        correct /= total_atoms
+        return correct_per_mol, test_loss, correct
 
     @staticmethod
     def features_to_torch_vec(data_vec):
@@ -191,7 +193,8 @@ class GNNTrainer(GNNWrapper):
         super(GNNTrainer, self).__init__(model, model_path, name, suffix, device)
 
     def train(self, dataloader, optimizer):
-        for batch, data in enumerate(dataloader):
+        self.model.train()
+        for data in dataloader:
             dev_data = data.to(self.device) if self.device == "cuda" else data
 
             # Compute prediction error

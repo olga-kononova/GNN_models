@@ -127,3 +127,12 @@ def get_bond_features(bond):
     bond_type = [0] * len(BOND_TYPES)
     bond_type[BOND_TYPES.get(str(bond.GetBondType()), 0)] = 1
     return bond_type
+
+
+def featurize_molecule(rdk_mol):
+    x = [get_atomic_features(atom) for atom in rdk_mol.GetAtoms()]
+    start_idx, end_idx, edge = get_edges_from_bonds(rdk_mol.GetBonds())
+    
+    return dict(x=x,
+                edge_attr=edge,
+                edge_index=[start_idx, end_idx])
