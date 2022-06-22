@@ -5,6 +5,8 @@ import os
 import json
 import numpy as np
 
+from tqdm import tqdm
+
 import torch
 from torch.nn import Linear, CrossEntropyLoss
 import torch.nn.functional as F
@@ -28,6 +30,7 @@ class GNNWrapper(torch.nn.Module):
         self.suffix = suffix
         
         self.reduced = noActDrop
+        self.dropp = 0.3
 
         self.device = device
         self.loss_fn = CrossEntropyLoss()
@@ -65,10 +68,11 @@ class GNNWrapper(torch.nn.Module):
     def get_embeddings(self, torch_data):
         torch_data = torch_data.to(self.device) if self.device == "cuda" else torch_data
         convolution = F.dropout(self.activation(self.conv_layers[0](torch_data.x,
-                                                 torch_data.edge_index)), p=0.3, training=False)
+                                                torch_data.edge_index)), 
+                                                p=self.dropp, training=False)
         for layer in self.conv_layers[1:-1]:
             convolution = F.dropout(self.activation(layer(convolution,
-                                       torch_data.edge_index)), p=0.3, training=False)
+                                       torch_data.edge_index)), p=self.dropp, training=False)
         convolution = self.conv_layers[-1](convolution, torch_data.edge_index)
         return self.normalization(convolution)
 
@@ -85,22 +89,24 @@ class GNNWrapper(torch.nn.Module):
 
 
     @torch.no_grad()
-    def test(self, dataloader):
-        size = len(dataloader)
+    def test(self, loader):
         self.model.eval()
         test_loss, correct_per_mol, correct, total_atoms = 0, 0, 0, 0
-        for data in dataloader:
-            dev_data = data.to(self.device) if self.device == "cuda" else data
+        for data_batch in tqdm(loader):
+            dev_data = data_batch.to(self.device)
             y = dev_data.y
             pred = self.model(dev_data)
             test_loss += self.loss_fn(pred, y).item()
+            
             correct += (pred.argmax(1) == y).sum().item()
-            correct_per_mol += int(pred.argmax(1).eq(y).all())
             total_atoms += y.size(0)
-        test_loss /= size
-        correct_per_mol /= size
+            correct_per_mol += int(pred.argmax(1).eq(y).all())
+                
+        test_loss /= len(loader)
+        correct_per_mol /= len(loader)
         correct /= total_atoms
-        return correct_per_mol, test_loss, correct
+    
+        return test_loss, correct, correct_per_mol
 
     @staticmethod
     def features_to_torch_vec(data_vec):
@@ -137,7 +143,7 @@ class GNNEdgeWrapper(GNNWrapper):
             convolution = F.dropout(self.activation(self.conv_layers[0](torch_data.x,
                                                                         torch_data.edge_index,
                                                                         torch_data.edge_attr)),
-                                    p=0.3,
+                                    p=self.dropp,
                                     training=False) 
         else:
             convolution = self.conv_layers[0](torch_data.x,
@@ -148,7 +154,7 @@ class GNNEdgeWrapper(GNNWrapper):
                 convolution = F.dropout(self.activation(layer(convolution,
                                                             torch_data.edge_index,
                                                             torch_data.edge_attr)),
-                                        p=0.3,
+                                        p=self.dropp,
                                         training=False)
             else:
                 convolution = layer(convolution,
@@ -160,7 +166,7 @@ class GNNEdgeWrapper(GNNWrapper):
                                            torch_data.edge_attr)
         if self.reduced:
             convolution = F.dropout(self.activation(convolution),
-                                    p=0.3,
+                                    p=self.dropp,
                                     training=False)
             
         return self.normalization(convolution)
