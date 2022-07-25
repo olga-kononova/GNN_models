@@ -70,24 +70,33 @@ def get_features_dim():
     """
     :return: number of atomic features, number of edge features
     """
-    return len(ATOM_SYMBOLS) + PERIOD_NUM + GROUP_NUM + NEIGHBOURS_LEN + len(HYBRIDIZATION) + len(formal_charge) + 5, \
-           len(BOND_TYPES)
+    return len(ATOM_SYMBOLS) +\
+           PERIOD_NUM +\
+           GROUP_NUM +\
+           NEIGHBOURS_LEN +\
+           len(HYBRIDIZATION) +\
+           len(CHIRAL_TAG) + \
+           NUM_ELECTRONS + \
+           len(formal_charge) + 5, \
+           len(BOND_TYPES) + \
+           len(BOND_STEREO) + 1    
 
 
 def get_features_description():
     return "Atomic: Symbol ({}), Period ({}), Group ({}), Neighbours ({}), "\
                     "Hybridization ({}), Chiral tag ({}), Formal charge({}), "\
                     "Radical Electrons, Rings ({}); " \
-           "Edge: Bond type ({})".format(len(ATOM_SYMBOLS),
-                                         PERIOD_NUM,
-                                         GROUP_NUM,
-                                         NEIGHBOURS_LEN,
-                                         len(HYBRIDIZATION),
-                                         len(CHIRAL_TAG),
-                                         len(formal_charge),
-                                         NUM_ELECTRONS,
-                                         5,
-                                         len(BOND_TYPES))
+           "Edge: Bond type ({}), conjugate (1), stereo ({})".format(len(ATOM_SYMBOLS),
+                                                                        PERIOD_NUM,
+                                                                        GROUP_NUM,
+                                                                        NEIGHBOURS_LEN,
+                                                                        len(HYBRIDIZATION),
+                                                                        len(CHIRAL_TAG),
+                                                                        len(formal_charge),
+                                                                        NUM_ELECTRONS,
+                                                                        5,
+                                                                        len(BOND_TYPES),
+                                                                        len(BOND_STEREO))
 
 
 def get_edges_from_bonds(molecule_bonds):
